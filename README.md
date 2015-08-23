@@ -5,7 +5,7 @@ Noysim is a free, open source Python package for estimating road traffic noise l
 
 ## Python installation
 
-Aimsun/Noysim requires that Python 2.6 (32-bit) is installed on the host system (website: http://www.python.org/download/releases/2.6.5/).
+Aimsun/Noysim requires that [Python 2.6](http://www.python.org/download/releases/2.6.5/) (32-bit) is installed on the host system.
 
 ## Additional libraries
 
@@ -26,6 +26,6 @@ To install the above libraries, just download them and run the installer. It wil
 The Noysim software consists of a Python library containing the underlying code for Noysim. This library has to be installed in the same way as the libraries above. Next to this, a number of scripts are provided:
 
 * **`plugin.py`**, the plugin file. This file should be saved to your computer (e.g. in a central folder or into a folder where the Aimsun networks are located). In order to use this Noysim plugin, networks have to load this file through the AAPI. This can be done by double-clicking on a scenario, selecting the Aimsun API tab, and adding the plugin.py file to the bottom list (make sure the check box is marked). See the manual for more information.
-* `**runviewer.pyw**`, the viewer application. This file can be saved to the desktop, and can be run to show the viewer application for real time visualization of noise levels, by double-clicking on the icon. The viewer window will be shown only if all the above libraries are installed correctly.
-* `**diagnostics.py**`, a diagnostics script. Save this file to your computer and double-click the icon to run it. It will show a console window with useful information about the installation. If all lines start with OK, then noysim was installed correctly.
-* `**logger.py**`, a script that simply logs simulations for further analysis.
+* **`runviewer.pyw`**, the viewer application. This file can be saved to the desktop, and can be run to show the viewer application for real time visualization of noise levels, by double-clicking on the icon. The viewer window will be shown only if all the above libraries are installed correctly.
+* **`diagnostics.py`**, a diagnostics script. Save this file to your computer and double-click the icon to run it. It will show a console window with useful information about the installation. If all lines start with OK, then noysim was installed correctly.
+* **`logger.py`**, a script that simply logs simulations for further analysis.
