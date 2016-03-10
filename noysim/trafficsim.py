@@ -206,7 +206,7 @@ class TrafficSimulation(object):
     if verbose:
       print
     # return results (number of passbys at origin, history)
-    return (sum(self._passbys[n1:]), self._history[n1:])
+    return (self._passbys[n1:], self._history[n1:])
 
 
 #---------------------------------------------------------------------------------------------------
@@ -278,7 +278,7 @@ def simulateLevelHistory(# general simulation parameters
   #dist = DisplacedNegativeExponentialDistribution(dt = dt, rate = rate, hmin = hmin)
   dist = CowanM3Distribution(dt = dt, rate = rate, hmin = hmin)
   tsim = TrafficSimulation(vlimit = vlimit, fleet = fleet, dist = dist, xmin = xlimits[0], xmax = xlimits[1], seed = seed)
-  (n, vhist) = tsim.run(warmup = warmup, duration = duration, verbose = verbose)
+  (passbys, vhist) = tsim.run(warmup = warmup, duration = duration, verbose = verbose)
   # construct emission model
   road = Roadsurface(cat = surface[0], temperature = surface[1], chipsize = surface[2], age = surface[3], wet = surface[4], tc = surface[5])
   if emodelname.lower() == 'imagine':
@@ -313,7 +313,7 @@ def simulateLevelHistory(# general simulation parameters
   # perform emission and propagation calculations
   tsList = levelTimeSeries(vhist = vhist, dt = dt, emodel = emodel, road = road, pmodel = pmodel, receivers = receivers, verbose = verbose)
   # return (number of passages, timeseries at different receivers)
-  return (n, tsList)
+  return (passbys, tsList)
 
 
 #---------------------------------------------------------------------------------------------------
@@ -323,7 +323,7 @@ def simulateLevelHistory(# general simulation parameters
 if __name__ == '__main__':
 
   # test headway distributions
-  if 0:
+  if 1:
     dt = 0.250
     rate = 400
     #dist = RegularDistribution(dt = dt, rate = rate)
@@ -337,17 +337,17 @@ if __name__ == '__main__':
     dist.plot()
 
   # test running a traffic simulation
-  if 0:
+  if 1:
     fleet = {QLDCar: 100.0}
     dist = QuasiRegularDistribution(dt = 0.5, rate = 500.0)
     tsim = TrafficSimulation(vlimit = 50.0, fleet = fleet, dist = dist, seed = 0)
-    (n, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = True)
-    print 'number of vehicle passbys:', n
+    (passbys, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = True)
+    print 'number of vehicle passbys:', sum(passbys)
     print 'number of timesteps:', len(vhist)
     print 'max #vehicles at any time in the network:', max([len(x) for x in vhist])
 
   # test relation between demand and actual flow
-  if 0:
+  if 1:
     counts = []
     for seed in range(10):
       print 'running simulation %d...' % seed
@@ -355,8 +355,8 @@ if __name__ == '__main__':
       #dist = QuasiRegularDistribution(dt = 0.5, rate = 200.0)
       dist = CowanM3Distribution(dt = 0.5, rate = 200, hmin = 2.0)
       tsim = TrafficSimulation(vlimit = 50.0, fleet = fleet, dist = dist, seed = seed)
-      (n, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = False)
-      counts.append(n)
+      (passbys, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = False)
+      counts.append(sum(passbys))
     print counts
 
   # run level history simulation
@@ -377,9 +377,9 @@ if __name__ == '__main__':
                                     ('Imagine+SkewedNormal', (1.0, 1.0, 1.0, 1.0, 1.0), (0.0, 0.0, 0.0, 0.0, 0.0)),
                                     ('Imagine+Distribution', (0.0, 0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0, 0.0))]:
       print '*** Simulation with %s emission model ***' % emodelname
-      (n, tsList) = simulateLevelHistory(duration = duration, dt = dt, seed = seed, verbose = verbose, rate = rate, pheavy = pheavy, vlimit = vlimit,
-                                         emodelname = emodelname, stdev = stdev, skew = skew, distances = distances)
-      print 'number of passbys:', n
+      (passbys, tsList) = simulateLevelHistory(duration = duration, dt = dt, seed = seed, verbose = verbose, rate = rate, pheavy = pheavy, vlimit = vlimit,
+                                               emodelname = emodelname, stdev = stdev, skew = skew, distances = distances)
+      print 'number of passbys:', sum(passbys)
       ts.append(tsList[0])
       indicators = tsList[0].indicators()
       # print noise indicators
