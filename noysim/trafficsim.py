@@ -124,9 +124,9 @@ class VehicleFactory(object):
     object.__init__(self)
     self._fleet = fleet # vehicle fleet, as a dictionary {vClass: proportion(in%)}
     self._position = position # location where the vehicles should be created
-    self._direction = direction # location where the vehicles should be created
-    self._speed = speed # location where the vehicles should be created
-    self._acceleration = acceleration # location where the vehicles should be created
+    self._direction = direction # direction the vehicles are travelling
+    self._speed = speed # speed of the vehicles
+    self._acceleration = acceleration # acceleration of the vehicles
     self._idCount = 0
 
   def create(self):
@@ -160,6 +160,7 @@ class TrafficSimulation(object):
     """ clear the simulation """
     self._t = 0.0
     self._passbys = [] # list with vehicle passbys (at the origin)
+    self._passbytimes = {}
     self._history = [] # history of vehicles at each timestep
     self._factory = VehicleFactory(fleet = self._fleet, position = Point(self._xmin, 0.0, 0.0), direction = Direction(bearing = 0.0), speed = self._vlimit, acceleration = 0.0)
 
@@ -170,7 +171,7 @@ class TrafficSimulation(object):
     else:
       return self._history[-1]
 
-  def step(self):
+  def step(self, warmup):
     """ advance the simulation with a single timestep """
     self._t += self._dt
     vehicles = []
@@ -179,7 +180,14 @@ class TrafficSimulation(object):
     for v in self.currentVehicles():
       newv = v.copy()
       x = newv.position().x
-      np += int((-self._dx < x) and (x <= 0.0))
+      isPassby = ((-self._dx < x) and (x <= 0.0))
+      if (isPassby and self._t >= warmup):
+        vcat = newv._cat
+        if vcat in self._passbytimes:
+          self._passbytimes[vcat].append(self._t - warmup)
+        else:
+          self._passbytimes[vcat] = [self._t - warmup]
+      np += int(isPassby)
       newv.move(dx = self._dx)
       if (newv.position().x <= self._xmax):
         vehicles.append(newv)
@@ -200,13 +208,13 @@ class TrafficSimulation(object):
     ntot = n1 + n2
     # perform actual simulation
     for i in range(ntot):
-      self.step()
+      self.step(warmup=warmup)
       if verbose:
         print 'performing traffic simulation: t = %.1f/%.1f\r' % (self._t, warmup + duration),
     if verbose:
       print
     # return results (number of passbys at origin, history)
-    return (self._passbys[n1:], self._history[n1:])
+    return (self._passbytimes, self._history[n1:])
 
 
 #---------------------------------------------------------------------------------------------------
@@ -278,7 +286,7 @@ def simulateLevelHistory(# general simulation parameters
   #dist = DisplacedNegativeExponentialDistribution(dt = dt, rate = rate, hmin = hmin)
   dist = CowanM3Distribution(dt = dt, rate = rate, hmin = hmin)
   tsim = TrafficSimulation(vlimit = vlimit, fleet = fleet, dist = dist, xmin = xlimits[0], xmax = xlimits[1], seed = seed)
-  (passbys, vhist) = tsim.run(warmup = warmup, duration = duration, verbose = verbose)
+  (passbytimes, vhist) = tsim.run(warmup = warmup, duration = duration, verbose = verbose)
   # construct emission model
   road = Roadsurface(cat = surface[0], temperature = surface[1], chipsize = surface[2], age = surface[3], wet = surface[4], tc = surface[5])
   if emodelname.lower() == 'imagine':
@@ -313,7 +321,7 @@ def simulateLevelHistory(# general simulation parameters
   # perform emission and propagation calculations
   tsList = levelTimeSeries(vhist = vhist, dt = dt, emodel = emodel, road = road, pmodel = pmodel, receivers = receivers, verbose = verbose)
   # return (number of passages, timeseries at different receivers)
-  return (passbys, tsList)
+  return (passbytimes, tsList)
 
 
 #---------------------------------------------------------------------------------------------------
@@ -341,8 +349,10 @@ if __name__ == '__main__':
     fleet = {QLDCar: 100.0}
     dist = QuasiRegularDistribution(dt = 0.5, rate = 500.0)
     tsim = TrafficSimulation(vlimit = 50.0, fleet = fleet, dist = dist, seed = 0)
-    (passbys, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = True)
-    print 'number of vehicle passbys:', sum(passbys)
+    (passbytimes, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = True)
+    print 'number of vehicle passbys:'
+    for key, value in passbytimes.iteritems():
+      print ' -> category %d: %d' % (key, len(value))
     print 'number of timesteps:', len(vhist)
     print 'max #vehicles at any time in the network:', max([len(x) for x in vhist])
 
@@ -355,8 +365,8 @@ if __name__ == '__main__':
       #dist = QuasiRegularDistribution(dt = 0.5, rate = 200.0)
       dist = CowanM3Distribution(dt = 0.5, rate = 200, hmin = 2.0)
       tsim = TrafficSimulation(vlimit = 50.0, fleet = fleet, dist = dist, seed = seed)
-      (passbys, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = False)
-      counts.append(sum(passbys))
+      (passbytimes, vhist) = tsim.run(warmup = 300.0, duration = 3600.0, verbose = False)
+      counts.append(sum([len(x) for x in passbytimes.values()]))
     print counts
 
   # run level history simulation
@@ -377,9 +387,11 @@ if __name__ == '__main__':
                                     ('Imagine+SkewedNormal', (1.0, 1.0, 1.0, 1.0, 1.0), (0.0, 0.0, 0.0, 0.0, 0.0)),
                                     ('Imagine+Distribution', (0.0, 0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0, 0.0))]:
       print '*** Simulation with %s emission model ***' % emodelname
-      (passbys, tsList) = simulateLevelHistory(duration = duration, dt = dt, seed = seed, verbose = verbose, rate = rate, pheavy = pheavy, vlimit = vlimit,
+      (passbytimes, tsList) = simulateLevelHistory(duration = duration, dt = dt, seed = seed, verbose = verbose, rate = rate, pheavy = pheavy, vlimit = vlimit,
                                                emodelname = emodelname, stdev = stdev, skew = skew, distances = distances)
-      print 'number of passbys:', sum(passbys)
+      print 'number of vehicle passbys:'
+      for key, value in passbytimes.iteritems():
+        print ' -> category %d: %d' % (key, len(value))
       ts.append(tsList[0])
       indicators = tsList[0].indicators()
       # print noise indicators
