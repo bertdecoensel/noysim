@@ -543,10 +543,10 @@ class TimeSeries(object):
           candidates.remove(j)
     return [(times[i], levels[i]) for i in events]
 
-  def plot(self, locs = None, interval = None, color = 'black'):
+  def plot(self, locs = None, interval = None, color = 'black', linewidth = 1.0):
     """ plot the timeseries """
     """ locs: the locations of the labels, in seconds """
-    pylab.plot(range(len(self)), self.amplitudes(), color = color, linewidth = 1.0)
+    pylab.plot(range(len(self)), self.amplitudes(), color = color, linewidth = linewidth)
     # correcting x-axis labels
     if locs == None: # standard values
       locs, labels = pylab.xticks()

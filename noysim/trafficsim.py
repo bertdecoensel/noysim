@@ -11,9 +11,12 @@ import pylab
 
 from numeric import choice
 from geo import Point, Direction
-from acoustics import TimeSeries
+from acoustics import sumdB, TimeSeries
 from emission import QLDCar, QLDLightTruck, QLDBDouble, QLDMotorcycle, Roadsurface, ImagineModel, SkewedNormalImagineCorrectionModel, DistributionImagineCorrectionModel
 from propagation import Receiver, ISO9613Environment, ISO9613Model
+
+
+MINRATE = 0.01
 
 
 #---------------------------------------------------------------------------------------------------
@@ -38,7 +41,7 @@ class HeadwayDistribution(object):
     """ return True when a vehicle has to generated """
     self._h -= self._dt
     if self._h <= 0.0:
-      self._h = self.inverseCumulativeProbability(random.random())
+      self._h = self.inverseCumulativeProbability(numpy.random.random())
       self._history.append(self._h)
       return True
     else:
@@ -144,7 +147,7 @@ class TrafficSimulation(object):
   """ class for running a simple traffic simulation:
       - a straight single-lane network along the x-axis is considered
       - free flow traffic conditions are considered, with all vehicles travelling at the limit speed
-      - only a single (light duty) vehicle type is considered
+      - both light duty (class 1) and heavy duty (class 3) vehicle types are considered
   """
   def __init__(self, vlimit, fleet, dist, xmin = -1000.0, xmax = 1000.0, seed = 0):
     self._vlimit = vlimit # limit vehicle speed in km/h
@@ -160,9 +163,10 @@ class TrafficSimulation(object):
     """ clear the simulation """
     self._t = 0.0
     self._passbys = [] # list with vehicle passbys (at the origin)
-    self._passbytimes = {}
+    self._passbytimes = {1: [], 3: []}
     self._history = [] # history of vehicles at each timestep
-    self._factory = VehicleFactory(fleet = self._fleet, position = Point(self._xmin, 0.0, 0.0), direction = Direction(bearing = 0.0), speed = self._vlimit, acceleration = 0.0)
+    self._factory = VehicleFactory(fleet=self._fleet, position=Point(self._xmin, 0.0, 0.0), direction=Direction(bearing=0.0),
+                                   speed=self._vlimit, acceleration=0.0)
 
   def currentVehicles(self):
     """ return a list of the vehicles currently in the network """
@@ -173,34 +177,32 @@ class TrafficSimulation(object):
 
   def step(self, warmup):
     """ advance the simulation with a single timestep """
-    self._t += self._dt
     vehicles = []
     # move the vehicles that are currently in the network
     np = 0 # number of passbys
     for v in self.currentVehicles():
       newv = v.copy()
+      newv.move(dx=self._dx)
+      newv.passby = False
       x = newv.position().x
-      isPassby = ((-self._dx < x) and (x <= 0.0))
+      isPassby = ((-self._dx/2.0 < x) and (x <= self._dx/2.0))
       if (isPassby and self._t >= warmup):
-        vcat = newv._cat
-        if vcat in self._passbytimes:
-          self._passbytimes[vcat].append(self._t - warmup)
-        else:
-          self._passbytimes[vcat] = [self._t - warmup]
+        newv.passby = True
+        self._passbytimes[newv._cat].append(self._t - warmup)
       np += int(isPassby)
-      newv.move(dx = self._dx)
       if (newv.position().x <= self._xmax):
         vehicles.append(newv)
     self._passbys.append(np)
+    self._t += self._dt
     # add a new vehicle if needed
     if self._dist():
       vehicles.append(self._factory.create())
+      vehicles[-1].passby = False
     self._history.append(vehicles)
 
   def run(self, warmup = 0.0, duration = 3600.0, verbose = False):
     """ run the simulation for the specified duration, and return list with vehicles and with passbys """
     self.clear()
-    random.seed(self._seed)
     numpy.random.seed(self._seed)
     # calculate number of timesteps
     n1 = int(round(warmup/self._dt))
@@ -221,9 +223,10 @@ class TrafficSimulation(object):
 # Construction of sound level time series
 #---------------------------------------------------------------------------------------------------
 
-def levelTimeSeries(vhist, dt, emodel, road, pmodel, receivers, verbose = False):
+def levelTimeSeries(vhist, dt, emodel, road, pmodel, receivers, verbose=False):
   """ calculate a time series of levels based on the given traffic simulation history """
   duration = len(vhist)*dt
+  elevels = {}
   # calculate lists of sources
   t = 0.0
   sourcesList = []
@@ -233,7 +236,16 @@ def levelTimeSeries(vhist, dt, emodel, road, pmodel, receivers, verbose = False)
     if verbose:
       print 'performing emission calculation: t = %.1f/%.1f\r' % (t, duration),
     for vehicle in vehicles:
-      sources += emodel.sources(vehicle = vehicle, road = road)
+      sList = emodel.sources(vehicle=vehicle, road=road)
+      if vehicle.passby == True:
+        # save total A-weighted emission level of vehicle during passby
+        elevel = sumdB([source.emission.laeq() for source in sList])
+        vcat = vehicle._cat
+        if vcat in elevels:
+          elevels[vcat].append(elevel)
+        else:
+          elevels[vcat] = [elevel]
+      sources += sList
     sourcesList.append(sources)
   if verbose:
     print
@@ -249,7 +261,7 @@ def levelTimeSeries(vhist, dt, emodel, road, pmodel, receivers, verbose = False)
   if verbose:
     print
   # construct timeseries
-  return [TimeSeries(z, dt) for z in zip(*levelsList)]
+  return (elevels, [TimeSeries(z, dt) for z in zip(*levelsList)])
 
 
 def simulateLevelHistory(# general simulation parameters
@@ -258,6 +270,7 @@ def simulateLevelHistory(# general simulation parameters
                          dt = 0.125, # simulation timestep
                          xlimits = (-1000.0, 1000.0), # network limits along x-axis
                          seed = 0, # seed for the simulation run
+                         nsims = 1, # number of traffic simulations to run (the best one is kept)
                          verbose = False, # if True, progress information is printed
                          # traffic parameters
                          rate = 100, # traffic flow (vehicles/h)
@@ -282,13 +295,28 @@ def simulateLevelHistory(# general simulation parameters
       assuming that the simulation model is a straight single-lane road along the x-axis
   """
   # perform traffic simulation
-  fleet = {QLDCar: (100.0 - pheavy), QLDBDouble: pheavy} # pheavy = percentage heavy vehicles (emission category 3)
-  #dist = DisplacedNegativeExponentialDistribution(dt = dt, rate = rate, hmin = hmin)
-  dist = CowanM3Distribution(dt = dt, rate = rate, hmin = hmin)
-  tsim = TrafficSimulation(vlimit = vlimit, fleet = fleet, dist = dist, xmin = xlimits[0], xmax = xlimits[1], seed = seed)
-  (passbytimes, vhist) = tsim.run(warmup = warmup, duration = duration, verbose = verbose)
+  fleet = {QLDCar: (100.0 - pheavy), QLDBDouble: pheavy} # pheavy = percentage heavy vehicles
+  expectRate = numpy.asarray([rate*(100.0-pheavy)*duration/360000.0, rate*pheavy*duration/360000.0])
+  expectRateStr = '[' + ' '.join([('%.1f' % x) for x in expectRate]) + ']'
+  cats = [key().cat() for key in fleet]
+  dist = DisplacedNegativeExponentialDistribution(dt=dt, rate=rate, hmin=hmin)
+  #dist = CowanM3Distribution(dt = dt, rate = rate, hmin = hmin)
+  passbytimes = None
+  vhist = None
+  rateError = numpy.inf
+  for i in range(nsims):
+    tsim = TrafficSimulation(vlimit=vlimit, fleet=fleet, dist=dist, xmin=xlimits[0], xmax=xlimits[1], seed=(seed+i))
+    (passbytimesTemp, vhistTemp) = tsim.run(warmup=warmup, duration=duration, verbose=verbose)
+    realRate = numpy.asarray([len(passbytimesTemp[1]), len(passbytimesTemp[3])])
+    rateErrorTemp = (numpy.abs(realRate - expectRate)/expectRate)**2
+    rateErrorTemp = numpy.sum([x for x in rateErrorTemp if not numpy.isnan(x)])
+    print 'expect rate: %s, real rate: %s, rate error: %.4f' % (expectRateStr, str(realRate), rateErrorTemp)
+    if rateErrorTemp < rateError:
+      rateError = rateErrorTemp
+      passbytimes = passbytimesTemp
+      vhist = vhistTemp
   # construct emission model
-  road = Roadsurface(cat = surface[0], temperature = surface[1], chipsize = surface[2], age = surface[3], wet = surface[4], tc = surface[5])
+  road = Roadsurface(cat=surface[0], temperature=surface[1], chipsize=surface[2], age=surface[3], wet=surface[4], tc=surface[5])
   if emodelname.lower() == 'imagine':
     emodel = ImagineModel()
   elif emodelname.lower() == 'imagine+skewednormal':
@@ -319,9 +347,9 @@ def simulateLevelHistory(# general simulation parameters
   # construct list of receivers
   receivers = [Receiver(position = Point(0.0, -d, h)) for d in distances]
   # perform emission and propagation calculations
-  tsList = levelTimeSeries(vhist = vhist, dt = dt, emodel = emodel, road = road, pmodel = pmodel, receivers = receivers, verbose = verbose)
+  elevels, tsList = levelTimeSeries(vhist=vhist, dt=dt, emodel=emodel, road=road, pmodel=pmodel, receivers=receivers, verbose=verbose)
   # return (number of passages, timeseries at different receivers)
-  return (passbytimes, tsList)
+  return (passbytimes, elevels, tsList)
 
 
 #---------------------------------------------------------------------------------------------------
@@ -387,8 +415,9 @@ if __name__ == '__main__':
                                     ('Imagine+SkewedNormal', (1.0, 1.0, 1.0, 1.0, 1.0), (0.0, 0.0, 0.0, 0.0, 0.0)),
                                     ('Imagine+Distribution', (0.0, 0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0, 0.0))]:
       print '*** Simulation with %s emission model ***' % emodelname
-      (passbytimes, tsList) = simulateLevelHistory(duration = duration, dt = dt, seed = seed, verbose = verbose, rate = rate, pheavy = pheavy, vlimit = vlimit,
-                                               emodelname = emodelname, stdev = stdev, skew = skew, distances = distances)
+      (passbytimes, elevels, tsList) = simulateLevelHistory(duration=duration, dt=dt, seed=seed, verbose=verbose,
+                                                            rate=rate, pheavy=pheavy, vlimit=vlimit,
+                                                            emodelname=emodelname, stdev=stdev, skew=skew, distances=distances)
       print 'number of vehicle passbys:'
       for key, value in passbytimes.iteritems():
         print ' -> category %d: %d' % (key, len(value))

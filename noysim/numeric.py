@@ -3,7 +3,6 @@
 #
 # Numeric and random number generation methods and functions
 
-import random
 import math
 
 import numpy
@@ -50,26 +49,25 @@ def SKEWinv(x, eta = 0.0, alpha = 1.0, kappa = 0.5):
 def seed(value = None):
   """ seed the random number generators """
   if value != None:
-    random.seed(value)
     numpy.random.seed(value)
 
 
 def urand(left = -1.0, right = 1.0):
   """ return a floating point random number, uniformly distributed between left and right """
-  return left + random.random()*(right - left)
+  return left + numpy.random.random()*(right - left)
 
 
 def logrand(left, right):
   """ return a floating point random number, logarithmically distributed between left and right (small values are favored) """
   assert (left > 0.0) and (right > 0.0)
-  return numpy.exp(numpy.log(left) + random.random()*(numpy.log(right) - numpy.log(left)))
+  return numpy.exp(numpy.log(left) + numpy.random.random()*(numpy.log(right) - numpy.log(left)))
 
 
 def rouletterand(partition):
   """ return an integer according to roulette wheel selection with given partition of 100%,
       e.g. partition = [33.3, 66.6] will return 0, 1 or 2 with equal chance
   """
-  (r, v) = (random.random()*100.0, 0)
+  (r, v) = (numpy.random.random()*100.0, 0)
   for i in range(len(partition)):
     if r > partition[i]:
       v = i + 1
@@ -95,7 +93,7 @@ def choice(outcomes):
   """
   # check for list
   if type(outcomes) is list:
-   return random.choice(outcomes)
+   return numpy.random.choice(outcomes)
   # calculate cumulative chances
   (cumul, partition, choices) = (0.0, [], [])
   for outcome, percentage in outcomes.iteritems():
