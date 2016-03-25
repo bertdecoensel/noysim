@@ -17,6 +17,7 @@ from propagation import Receiver, ISO9613Environment, ISO9613Model
 
 
 MINRATE = 0.01
+RATEERRORTHRESHOLD = 0.001
 
 
 #---------------------------------------------------------------------------------------------------
@@ -315,6 +316,8 @@ def simulateLevelHistory(# general simulation parameters
       rateError = rateErrorTemp
       passbytimes = passbytimesTemp
       vhist = vhistTemp
+    if rateError < RATEERRORTHRESHOLD:
+      break
   # construct emission model
   road = Roadsurface(cat=surface[0], temperature=surface[1], chipsize=surface[2], age=surface[3], wet=surface[4], tc=surface[5])
   if emodelname.lower() == 'imagine':
