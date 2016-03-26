@@ -14,14 +14,14 @@ import version
 __version__ = version.version # Noysim version
 
 # import modules
-import viewer
+#import viewer
 import geo
 import excel
 import numeric
 import acoustics
 import emission
 import propagation
-import config
-import aimsuntools
+#import config
+#import aimsuntools
 import trafficsim
 import analysis
