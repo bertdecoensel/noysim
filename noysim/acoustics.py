@@ -440,6 +440,10 @@ class TimeSeries(object):
     t += other
     return t
 
+  def addLevel(self, level):
+    """ add a constant level to the timeseries values """
+    self._z = plusdB(self._z, level)
+
   def save(self, filename, format = '%.4f'):
     """ save the timeseries to a textfile """
     f = open(filename, 'w')
