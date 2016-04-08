@@ -443,6 +443,11 @@ class TimeSeries(object):
   def addLevel(self, level):
     """ add a constant level to the timeseries values """
     self._z = plusdB(self._z, level)
+    return self
+
+  def addTimeseries(self, ts):
+    """ add another timeseries to the current timeseries, sample by sample, in decibel """
+    self._z = plusdB(self._z, ts.amplitudes())
 
   def save(self, filename, format = '%.4f'):
     """ save the timeseries to a textfile """
@@ -454,15 +459,15 @@ class TimeSeries(object):
   def view(self, start, duration):
     """ return a view (= reference) of a temporal section of the timeseries (numpy array) """
     n = len(self)
-    iBegin = utils.numeric.restrict(self.timeindex(start),(0,n-1))
-    iEnd   = utils.numeric.restrict(iBegin + self.timeindex(duration),(iBegin+1,n))
+    iBegin = numpy.clip(self.timeindex(start), 0, n-1)
+    iEnd   = numpy.clip(iBegin + self.timeindex(duration), iBegin+1, n)
     return self.amplitudes()[iBegin:iEnd]
 
   def section(self, start, duration):
     """ return a temporal section of the timeseries as a new timeseries (start and duration are given in seconds) """
-    return TimeSeries(source = self.view(start,duration), dt = self.dt())
+    return TimeSeries(self.view(start,duration), dt = self.dt())
 
-  def percentile(self,p):
+  def percentile(self, p):
     """ return percentile values with p a scalar or sequence of percentiles (in %) """
     y = numpy.sort(self.amplitudes())
     trim = 1.0 + (y.size - 1)*(100.0 - numpy.asarray(p))*0.01
@@ -538,7 +543,7 @@ class TimeSeries(object):
           # it takes too long for the level to drop
           candidates.remove(j)
         elif (len(events) > 0) and ((times[j] - times[events[-1]]) < mindt):
-          # the peak is to close to the previous peak
+          # the peak is too close to the previous peak
           candidates.remove(j)
       # check which of the candidates can be upgraded to events
       for j in candidates:
@@ -561,7 +566,7 @@ class TimeSeries(object):
     # correcting y-axis
     if interval != None:
       a = pylab.axis()
-      pylab.axis((a[0], a[1], interval[0], interval[1]))
+      pylab.axis((0.0, len(self), interval[0], interval[1]))
     pylab.xlabel('time [s]')
 
   # list of the indicators that can be calculated
@@ -575,6 +580,7 @@ class TimeSeries(object):
     result['ASEL']  = self.sel()
     # percentile levels
     result['LAmax'] = self.maximum()
+    result['LAmin'] = self.minimum()
     result['LA05']  = self.percentile(5.0)
     result['LA10']  = self.percentile(10.0)
     result['LA50']  = self.percentile(50.0)
@@ -586,6 +592,18 @@ class TimeSeries(object):
     # hybrid indicators
     result['TNI']   = 4.0*(result['LA10'] - result['LA90']) + result['LA90'] - 30.0 # traffic noise index
     result['NPL']   = result['LAeq'] + 2.56 * self.stdev() # noise pollution level
+    return result
+
+  def basicIndicators(self):
+    """ calculate a set of basic indicators (assuming dBA values) """
+    result = {}
+    result['LAeq']  = self.leq()
+    result['LAmin'] = self.minimum()
+    result['LAmax'] = self.maximum()
+    result['LA10']  = self.percentile(10.0)
+    result['LA50']  = self.percentile(50.0)
+    result['LA90']  = self.percentile(90.0)
+    result['sigma'] = self.stdev()
     return result
 
 
