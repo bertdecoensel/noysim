@@ -440,6 +440,11 @@ class TimeSeries(object):
     t += other
     return t
 
+  def correct(self, level):
+    """ correct the timeseries with the given level """
+    self._z += level
+    return self
+
   def addLevel(self, level):
     """ add a constant level to the timeseries values """
     self._z = plusdB(self._z, level)
