@@ -474,12 +474,7 @@ class TimeSeries(object):
 
   def percentile(self, p):
     """ return percentile values with p a scalar or sequence of percentiles (in %) """
-    y = numpy.sort(self.amplitudes())
-    trim = 1.0 + (y.size - 1)*(100.0 - numpy.asarray(p))*0.01
-    f = numpy.floor(trim).astype('int')
-    c = numpy.ceil(trim).astype('int')
-    d = (trim - f)
-    return y[f-1]*d + y[c-1]*(1.0 - d)
+    return numpy.percentile(self.amplitudes(), 100.0 - numpy.asarray(p))
 
   def statdist(self, r = (0,100)):
     """ calculate the statistical distribution (histogram) within the integer level range r = (min,max) """
@@ -557,6 +552,12 @@ class TimeSeries(object):
           candidates.remove(j)
     return [(times[i], levels[i]) for i in events]
 
+  def intermittencyRatio(self):
+    """ Calculate the intermittency ratio according to Wunderli et al., J. Expo. Sci. Environ. Epidemiol. 2015:1-11 (2015) """
+    energyTotal = numpy.sum(fromdB(self._z))
+    energyEvent = numpy.sum(fromdB(self._z[self._z >= (self.leq() + 3.0)]))
+    return 100.0*energyEvent/energyTotal
+
   def plot(self, locs = None, interval = None, color = 'black', linewidth = 1.0):
     """ plot the timeseries """
     """ locs: the locations of the labels, in seconds """
@@ -575,28 +576,33 @@ class TimeSeries(object):
     pylab.xlabel('time [s]')
 
   # list of the indicators that can be calculated
-  INDICATORLIST = ['LAeq', 'ASEL', 'LAmax', 'LA05', 'LA10', 'LA50', 'LA90', 'LA95', 'Ncn', 'TNI', 'NPL']
+  INDICATORLIST = ['LAeq', 'ASEL', 'LAmax', 'LAmin', 'LA01', 'LA05', 'LA10', 'LA50', 'LA90', 'LA95', 'LA99',
+                   'sigma', 'Ncn', 'MM60', 'IR', 'TNI', 'NPL']
 
   def indicators(self):
     """ calculate a set of level time series indicators (assuming dBA values) """
     result = {}
     # energy-equivalent levels
     result['LAeq']  = self.leq()
-    result['ASEL']  = self.sel()
+    #result['ASEL']  = self.sel()
     # percentile levels
     result['LAmax'] = self.maximum()
-    result['LAmin'] = self.minimum()
+    #result['LAmin'] = self.minimum()
+    result['LA01']  = self.percentile(1.0)
     result['LA05']  = self.percentile(5.0)
     result['LA10']  = self.percentile(10.0)
     result['LA50']  = self.percentile(50.0)
     result['LA90']  = self.percentile(90.0)
-    result['LA95']  = self.percentile(95.0)
+    #result['LA95']  = self.percentile(95.0)
+    #result['LA99']  = self.percentile(99.0)
     # noise event indicators
-    result['Ncn']   = self.ncn(reference = result['LA50'])
-    result['MM60']  = len(self.madmax())
+    result['sigma'] = self.stdev()
+    #result['Ncn']   = self.ncn(reference = result['LA50'])
+    #result['MM60']  = len(self.madmax())
+    result['IR']    = self.intermittencyRatio()
     # hybrid indicators
     result['TNI']   = 4.0*(result['LA10'] - result['LA90']) + result['LA90'] - 30.0 # traffic noise index
-    result['NPL']   = result['LAeq'] + 2.56 * self.stdev() # noise pollution level
+    result['NPL']   = result['LAeq'] + 2.56 * result['sigma'] # noise pollution level
     return result
 
   def basicIndicators(self):
@@ -619,59 +625,73 @@ class TimeSeries(object):
 if __name__ == '__main__':
 
   # test decibel calculus
-  print 'todB'
-  print todB(4000.0)
-  print todB(numpy.asarray([[4000.0, -5000.0], [6000.0, 7000.0]]))
-  print 'plusdB'
-  print plusdB(0.0, 0.0)
-  print plusdB(numpy.asarray([[0.0, 0.0], [0.0, 0.0]]), numpy.asarray([[1.0, 3.0], [10.0, 30.0]]))
-  print 'averagedB'
-  print averagedB([0.0, 0.0, 10.0, 0.0])
-  print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]))
-  print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=0)
-  print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=1)
-  print 'sumdB'
-  print sumdB([0.0, 0.0, 10.0, 0.0])
-  print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]))
-  print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=0)
-  print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=1)
-  print 'parsedB'
-  print parsedB('20.0')
-  print parsedB('-150.0')
-  print parsedB('-Inf')
+  if 0:
+    print 'todB'
+    print todB(4000.0)
+    print todB(numpy.asarray([[4000.0, -5000.0], [6000.0, 7000.0]]))
+    print 'plusdB'
+    print plusdB(0.0, 0.0)
+    print plusdB(numpy.asarray([[0.0, 0.0], [0.0, 0.0]]), numpy.asarray([[1.0, 3.0], [10.0, 30.0]]))
+    print 'averagedB'
+    print averagedB([0.0, 0.0, 10.0, 0.0])
+    print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]))
+    print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=0)
+    print averagedB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=1)
+    print 'sumdB'
+    print sumdB([0.0, 0.0, 10.0, 0.0])
+    print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]))
+    print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=0)
+    print sumdB(numpy.asarray([[1.0, 2.0], [3.0, 4.0]]), axis=1)
+    print 'parsedB'
+    print parsedB('20.0')
+    print parsedB('-150.0')
+    print parsedB('-Inf')
 
   # test band spectrum arithmetic
-  a = OctaveBandSpectrum([80., 82., 81., 79., 81., 82., 78., 76.])
-  b = OctaveBandSpectrum()
-  b[1000] = 90.0
-  ab = a + b
-  print 'a:    ', a
-  print 'b:    ', b
-  print 'a+b:  ', ab
-  print isinstance(ab, OctaveBandSpectrum) # should be True
-  print 'a/2.0:', a/2.0
-  print 'a*2.0:', a*2.0
-  c = b.copy()
-  b[1000] = 123.0
-  print 'b:    ', b
-  print 'c:    ', c
-  for f, v in a:
-    print str(f) + ' Hz: ' + str(v)
+  if 0:
+    a = OctaveBandSpectrum([80., 82., 81., 79., 81., 82., 78., 76.])
+    b = OctaveBandSpectrum()
+    b[1000] = 90.0
+    ab = a + b
+    print 'a:    ', a
+    print 'b:    ', b
+    print 'a+b:  ', ab
+    print isinstance(ab, OctaveBandSpectrum) # should be True
+    print 'a/2.0:', a/2.0
+    print 'a*2.0:', a*2.0
+    c = b.copy()
+    b[1000] = 123.0
+    print 'b:    ', b
+    print 'c:    ', c
+    for f, v in a:
+      print str(f) + ' Hz: ' + str(v)
 
   # test 1/3-octave band to octave band conversion
-  t = TertsBandSpectrum()
-  print t.octaveBandSpectrum()
+  if 0:
+    t = TertsBandSpectrum()
+    print t.octaveBandSpectrum()
 
   # test plotting spectra
-  a = []
-  a.append(OctaveBandSpectrum([65., 72., 81., 79., 88., 82., 78., 66.]))
-  a.append(TertsBandSpectrum([ 5.0, 20.0, 24.0, 34.0, 24.0, 43.0, 52.0, 62.0, 54.0, 58.0, 61.0, 52.0, 39.0, 43.0, 48.0, 49.0,
-                              53.0, 59.0, 62.0, 69.0, 61.0, 52.0, 48.0, 43.0, 48.0, 41.0, 39.0, 32.0, 24.0, 15.0, 10.0]))
-  for x in a:
+  if 0:
+    a = []
+    a.append(OctaveBandSpectrum([65., 72., 81., 79., 88., 82., 78., 66.]))
+    a.append(TertsBandSpectrum([ 5.0, 20.0, 24.0, 34.0, 24.0, 43.0, 52.0, 62.0, 54.0, 58.0, 61.0, 52.0, 39.0, 43.0, 48.0, 49.0,
+                                53.0, 59.0, 62.0, 69.0, 61.0, 52.0, 48.0, 43.0, 48.0, 41.0, 39.0, 32.0, 24.0, 15.0, 10.0]))
+    for x in a:
+      pylab.figure()
+      x.plot()
     pylab.figure()
-    x.plot()
-  pylab.figure()
-  a[1].plot(m = 'cross', color = 'green')
+    a[1].plot(m = 'cross', color = 'green')
+
+  # test timeseries
+  if 1:
+    x = 60.0 + 10.0*numpy.random.randn(600)
+    m = TimeSeries(x).indicators()
+    for label in ['LAeq', 'LA10', 'LA50', 'LA90', 'sigma', 'IR']:
+      print '%6s: %.2f' % (label, m[label])
+    #pylab.figure()
+    #pylab.plot(range(600), x)
+
 
   try:
     pylab.show()
