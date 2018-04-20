@@ -464,8 +464,8 @@ class TimeSeries(object):
   def view(self, start, duration):
     """ return a view (= reference) of a temporal section of the timeseries (numpy array) """
     n = len(self)
-    iBegin = numpy.clip(self.timeindex(start), 0, n-1)
-    iEnd   = numpy.clip(iBegin + self.timeindex(duration), iBegin+1, n)
+    iBegin = int(numpy.clip(self.timeindex(start), 0, n-1))
+    iEnd   = int(numpy.clip(iBegin + self.timeindex(duration), iBegin+1, n))
     return self.amplitudes()[iBegin:iEnd]
 
   def section(self, start, duration):
